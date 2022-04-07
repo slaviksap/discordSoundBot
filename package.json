@@ -1,0 +1,38 @@
+{
+  "name": "ears",
+  "version": "1.0.0",
+  "description": "A speech-to-text bot for Discord written in NodeJS.\r Can be useful for hearing impaired and deaf people.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=12.x"
+  },
+  "author": "Ilja Nevolin",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/healzer/DiscordEarsBot.git"
+  },
+  "bugs": {
+    "url": "https://github.com/healzer/DiscordEarsBot/issues"
+  },
+  "homepage": "https://github.com/healzer/DiscordEarsBot#readme",
+  "license": "ISC",
+  "dependencies": {
+    "@discordjs/opus": "^0.4.0",
+    "@discordjs/voice": "^0.8.0",
+    "@google-cloud/speech": "^4.2.0",
+    "@mapbox/node-pre-gyp": "^1.0.1",
+    "discord.js": "^12.5.3",
+    "discord.js-v12": "^2.5.0",
+    "ffmpeg-static": "^4.4.1",
+    "libsodium-wrappers": "^0.7.10",
+    "node-witai-speech": "^1.0.2",
+    "request": "^2.88.2",
+    "underscore": "^1.12.0",
+    "vosk": "^0.3.30"
+  },
+  "keywords": []
+}
