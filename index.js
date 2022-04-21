@@ -167,15 +167,15 @@ const PREFIX = '!';
 const _CMD_HELP        = PREFIX + 'help';
 const _CMD_JOIN        = PREFIX + 'join';
 const _CMD_LEAVE       = PREFIX + 'leave';
-const _CMD_DEBUG       = PREFIX + 'debug';
-const _CMD_TEST        = PREFIX + 'hello';
-const _CMD_LANG        = PREFIX + 'lang';
 const _CMD_SOUNDLIST   = PREFIX + 'sounds';
 const _CMD_HERE        = PREFIX + 'here';
 const _CMD_PLAY        = PREFIX + 'play';
 const _CMD_UPLOAD      = PREFIX + 'upload';
 const _CMD_RENAME      = PREFIX + 'rename';
-const _CMD_ADDPSEUDONYM= PREFIX + 'addpseudo';
+const _CMD_ADDPSEUDONYM = PREFIX + 'addpseudo';
+const _CMD_SHOWPSEUDONYM = PREFIX + 'showpseudo';
+const _CMD_DELETEPSEUDONYM = PREFIX + 'deletepseudo';
+const _CMD_DELETESOUND = PREFIX + 'deletesound';
 
 const guildMap = new Map();
 
@@ -206,43 +206,8 @@ discordClient.on('message', async (msg) => {
         } else if (msg.content.trim().toLowerCase() == _CMD_HELP) {
             msg.reply(getHelpString());
         }
-        else if (msg.content.trim().toLowerCase() == _CMD_DEBUG) {
-            console.log('toggling debug mode')
-            let val = guildMap.get(mapKey);
-            if (val.debug)
-                val.debug = false;
-            else
-                val.debug = true;
-        }
-        else if (msg.content.trim().toLowerCase() == _CMD_TEST) {
-            msg.reply('hello back =)')
-        }
-        else if (msg.content.split('\n')[0].split(' ')[0].trim().toLowerCase() == _CMD_LANG) {
-            if (SPEECH_METHOD === 'witai') {
-                const lang = msg.content.replace(_CMD_LANG, '').trim().toLowerCase()
-                listWitAIApps(data => {
-                    if (!data.length)
-                        return msg.reply('no apps found! :(')
-                    for (const x of data) {
-                        updateWitAIAppLang(x.id, lang, data => {
-                            if ('success' in data)
-                                msg.reply('succes!')
-                            else if ('error' in data && data.error !== 'Access token does not match')
-                                msg.reply('Error: ' + data.error)
-                        })
-                    }
-                })
-            } else if (SPEECH_METHOD === 'vosk') {
-                let val = guildMap.get(mapKey);
-                const lang = msg.content.replace(_CMD_LANG, '').trim().toLowerCase()
-                val.selected_lang = lang;
-            } else {
-                msg.reply('Error: this feature is only for Google')
-            }
-        }
-        else if (msg.content.trim().toLowerCase() == _CMD_SOUNDLIST) {
+        else if (msg.content.trim().toLowerCase() == _CMD_SOUNDLIST) 
             await sounds(msg);
-        }
         else if (msg.content.trim().toLowerCase() == _CMD_HERE)
             await here(msg);
         else if (msg.content.trim().startsWith(_CMD_PLAY))
@@ -252,7 +217,13 @@ discordClient.on('message', async (msg) => {
         else if (msg.content.trim().startsWith(_CMD_RENAME))
             await rename(msg);
         else if (msg.content.trim().startsWith(_CMD_ADDPSEUDONYM))
-            await addpseudo(msg);
+            await add_pseudo(msg);
+        else if (msg.content.trim().startsWith(_CMD_SHOWPSEUDONYM))
+            await show_pseudo(msg);
+        else if (msg.content.trim().startsWith(_CMD_DELETEPSEUDONYM))
+            await delete_pseudo(msg);
+        else if (msg.content.trim().startsWith(_CMD_DELETESOUND))
+            await delete_sound(msg);
     } catch (e) {
         console.log('discordClient message: ' + e)
         msg.reply('Error#180: Something went wrong, try again or contact the developers if this keeps happening.');
@@ -260,12 +231,16 @@ discordClient.on('message', async (msg) => {
 })
 
 function getHelpString() {
-    let out = '**COMMANDS:**\n'
-        out += '```'
-        out += PREFIX + 'join\n';
-        out += PREFIX + 'leave\n';
-        out += PREFIX + 'lang <code>\n';
-        out += '```'
+    let out = '\n' + PREFIX + 'join' + ' - connect bot to your voice channel\n';
+    out += PREFIX + 'leave' + ' - disconnect bot from voice channel\n';
+    out += PREFIX + 'here' + ' - just a ready check\n';
+    out += PREFIX + 'sounds' + ' - print a sound list\n';
+    out += PREFIX + 'play soundName || number' + ' - play the sound from sound list with given name or number\n';
+    out += PREFIX + 'upload' + ' - upload given mp3 attachments\n';
+    out += PREFIX + 'rename oldSoundName newSoundName' + ' - rename sound from the first name to the second\n';
+    out += PREFIX + 'addpseudo soundName 1Pseudonym 2Pseudonym ...' + ' - add pseudonyms to sound, pseudonyms used to spot on which words bot will trigger sound\n';
+    out += PREFIX + 'showpseudo soundName' + ' - show sounds pseudonyms\n';
+    out += PREFIX + 'deletepseudo soundName 1Pseudonym 2Pseudonym ...' + ' - removes given pseudonyms from list\n';
     return out;
 }
 
@@ -309,18 +284,18 @@ async function connect(msg, mapKey) {
 }
 
 const vosk = require('vosk');
-let recs = {}
-if (SPEECH_METHOD === 'vosk') {
-  vosk.setLogLevel(-1);
-  // MODELS: https://alphacephei.com/vosk/models
-  recs = {
-      'en': new vosk.Recognizer({ model: new vosk.Model('vosk_models/en'), sampleRate: 48000 }),
-      'ru': new vosk.Recognizer({ model: new vosk.Model('vosk_models/ru'), sampleRate: 48000 }),
-    // 'fr': new vosk.Recognizer({model: new vosk.Model('vosk_models/fr'), sampleRate: 48000}),
-    // 'es': new vosk.Recognizer({model: new vosk.Model('vosk_models/es'), sampleRate: 48000}),
-  }
-  // download new models if you need
-  // dev reference: https://github.com/alphacep/vosk-api/blob/master/nodejs/index.js
+MODEL_PATH = 'vosk_models/en';
+const model = new vosk.Model(MODEL_PATH);
+let recs = new vosk.Recognizer({ model: model, sampleRate: 48000 });
+let is_recognizer_need_to_reload = false;
+vosk.setLogLevel(-1);
+setTimeout(() => is_recognizer_need_to_reload = true, 30000);
+function reload_recognizer() {
+    recs.free();
+    recs = new vosk.Recognizer({ model: model, sampleRate: 48000 });
+    is_recognizer_need_to_reload = false;
+    setTimeout(() => is_recognizer_need_to_reload = true, 30000);
+    console.log('in reload recognizer');
 }
 
 
@@ -368,7 +343,6 @@ function speak_impl(voice_Connection, mapKey) {
 function process_commands_query(txt, mapKey, user) {
     if (txt && txt.length) {
         let val = guildMap.get(mapKey);
-        val.text_Channel.send(user.username + ': ' + txt);
         voice_command_processing(txt, user);
     }
 }
@@ -378,92 +352,15 @@ function process_commands_query(txt, mapKey, user) {
 //////////////// SPEECH //////////////////
 //////////////////////////////////////////
 async function transcribe(buffer, mapKey) {
-  if (SPEECH_METHOD === 'witai') {
-      return transcribe_witai(buffer)
-  } else if (SPEECH_METHOD === 'google') {
-      return transcribe_gspeech(buffer)
-  } else if (SPEECH_METHOD === 'vosk') {
-      let val = guildMap.get(mapKey);
-      recs[val.selected_lang].acceptWaveform(buffer);
-      let ret = recs[val.selected_lang].result().text;
-      console.log('vosk:', ret)
+  if (SPEECH_METHOD === 'vosk') {
+      recs.acceptWaveform(buffer);
+      let ret = recs.result().text;
+      console.log('vosk:', ret);
+      if (is_recognizer_need_to_reload)
+          reload_recognizer();
       return ret;
   }
 }
-
-// WitAI
-let witAI_lastcallTS = null;
-const witClient = require('node-witai-speech');
-async function transcribe_witai(buffer) {
-    try {
-        // ensure we do not send more than one request per second
-        if (witAI_lastcallTS != null) {
-            let now = Math.floor(new Date());    
-            while (now - witAI_lastcallTS < 1000) {
-                console.log('sleep')
-                await sleep(100);
-                now = Math.floor(new Date());
-            }
-        }
-    } catch (e) {
-        console.log('transcribe_witai 837:' + e)
-    }
-
-    try {
-        console.log('transcribe_witai')
-        const extractSpeechIntent = util.promisify(witClient.extractSpeechIntent);
-        var stream = Readable.from(buffer);
-        const contenttype = "audio/raw;encoding=signed-integer;bits=16;rate=48k;endian=little"
-        const output = await extractSpeechIntent(WITAI_TOK, stream, contenttype)
-        witAI_lastcallTS = Math.floor(new Date());
-        console.log(output)
-        stream.destroy()
-        if (output && '_text' in output && output._text.length)
-            return output._text
-        if (output && 'text' in output && output.text.length)
-            return output.text
-        return output;
-    } catch (e) { console.log('transcribe_witai 851:' + e); console.log(e) }
-}
-
-// Google Speech API
-// https://cloud.google.com/docs/authentication/production
-const gspeech = require('@google-cloud/speech');
-const gspeechclient = new gspeech.SpeechClient({
-  projectId: 'discordbot',
-  keyFilename: 'gspeech_key.json'
-});
-
-async function transcribe_gspeech(buffer) {
-  try {
-      console.log('transcribe_gspeech')
-      const bytes = buffer.toString('base64');
-      const audio = {
-        content: bytes,
-      };
-      const config = {
-        encoding: 'LINEAR16',
-        sampleRateHertz: 48000,
-        languageCode: 'en-US',  // https://cloud.google.com/speech-to-text/docs/languages
-      };
-      const request = {
-        audio: audio,
-        config: config,
-      };
-
-      const [response] = await gspeechclient.recognize(request);
-      const transcription = response.results
-        .map(result => result.alternatives[0].transcript)
-        .join('\n');
-      console.log(`gspeech: ${transcription}`);
-      return transcription;
-
-  } catch (e) { console.log('transcribe_gspeech 368:' + e) }
-}
-
-//////////////////////////////////////////
-//////////////////////////////////////////
-//////////////////////////////////////////
 
 //MY FUNCTIONS
 
@@ -480,7 +377,6 @@ function updateSoundList() {
     soundList = fs.readdirSync("\sounds");
     for (i = 0; i < soundList.length; ++i) {
         soundList[i] = soundList[i].slice(0, -4);
-        console.log(soundList[i]);
     }
 }
 
@@ -497,7 +393,7 @@ function is_str_in_col(str, collection) {
 }
 async function play(msg) {
     updateSoundList();
-    soundName = msg.content.trim().slice(6);
+    let soundName = msg.content.trim().slice(6);
     if (is_str_in_col(soundName, soundList)) {
         if (!is_connected(msg))
             await connect(msg, msg.guild.id);
@@ -521,7 +417,6 @@ async function play(msg) {
     }
 }
 async function sounds(msg) {
-    console.log('Something!');
     updateSoundList();
     let s = '';
     for (let i = 1; i <= soundList.length; i++) {
@@ -576,14 +471,14 @@ async function rename(msg) {
         await msg.channel.send('Couldn\'t find a file with that name');
 }
 
-//Голосовые функции   replace(/[\s_'-]/g, '')
+//Голосовые функции  
 function voice_command_processing(txt, user) {
-    txt = txt.replace(/[\s_'-]/g, '').toLowerCase();
+    let text = txt.replace(/[\s_'-]/g, '').toLowerCase();
     let dict = pseudoJSON.dictionary;
     for (let soundNum = 0; soundNum < dict.length; ++soundNum) {
         let ps = dict[soundNum].pseudonyms;
         for (let i = 0; i < ps.length; ++i) {
-            if (txt.indexOf(ps[i].replace(/[\s_'-]/g, '').toLowerCase()) != -1) {
+            if (text.indexOf(ps[i].replace(/[\s_'-]/g, '').toLowerCase()) != -1) {
                 const path = 'sounds/' + dict[soundNum].soundName + '.mp3';
                 const dispatcher = voice_Connection.play(path);
                 dispatcher.on('finish', () => {
@@ -594,34 +489,9 @@ function voice_command_processing(txt, user) {
     }
 }
 
-function is_strings_similar(str1, str2) {
-    if (Math.abs(str1.length - str2.length) > 4)
-        return false;
-    let distance = D(str1.length, str2.length, str1, str2);
-    console.log(distance);
-    if (distance < 5)
-        return true;
-}
-function m(char1, char2) {
-    if (char1 === char2)
-        return 0;
-    return 1;
-}
-
-function D(i, j,str1,str2) {
-    if (i == 0 && j == 0)
-        return 0;
-    if (j == 0)
-        return i;
-    if (i == 0)
-        return j;
-    return Math.min(D(i, j - 1, str1, str2) + 1, D(i - 1, j, str1, str2) + 1,
-        D(i - 1, j - 1, str1, str2) + m(str1[i - 1], str2[j - 1]));
-}
-
 //work with JSON file
 const pseudonyms_file = 'pseudonyms.json';
-var pseudoJSON;
+let pseudoJSON;
 function load_pseudo() {
     if (fs.existsSync(pseudonyms_file)) {
         pseudoJSON = JSON.parse(fs.readFileSync(pseudonyms_file, 'utf8'));
@@ -649,13 +519,12 @@ function add_sound_in_pseudoJSON(str) {
     }
     pseudoJSON.dictionary.push(obj);
 }
-async function addpseudo(msg) {
+async function add_pseudo(msg) {
     updateSoundList();
     let strings = msg.content.trim().slice(11).split(' ');
     let isKeyEx = false;
     let key = pseudoJSON.dictionary;
     for (let num = 0; num < key.length; ++num) {
-        console.log(key[num].soundName);
         if (key[num].soundName === strings[0]) {
             for (let i = 1; i < strings.length; ++i) {
                 key[num].pseudonyms.push(strings[i]);
@@ -666,6 +535,69 @@ async function addpseudo(msg) {
             break;
     }
     if (!isKeyEx)
-        await msg.channel.send('Couldn\'t find a file with that name');
+        await msg.channel.send("Can't find this sound");
+    save_pseudoJSON();
+}
+async function show_pseudo(msg) {
+    let soundName = msg.content.trim().slice(12);
+    let key = pseudoJSON.dictionary;
+    let string = '';
+    for (let num = 0; num < key.length; ++num) {
+        if (key[num].soundName === soundName) {
+            string += 'Pseudonyms for ' + soundName + ': ';
+            for (let i = 0; i < key[num].pseudonyms.length; ++i) {
+                string += key[num].pseudonyms[i] + ' ';
+            }
+            await msg.channel.send(string);
+            return;
+        }
+    }
+    await msg.channel.send("Can't find this sound");
+}
+async function delete_pseudo(msg) {
+    let strings = msg.content.trim().slice(14).split(' ');
+    let isKeyEx = false;
+    let key = pseudoJSON.dictionary;
+    for (let num = 0; num < key.length; ++num) {
+        if (key[num].soundName === strings[0]) {
+            for (let i = 1; i < strings.length; ++i) {
+                for (let k = 0; k < key[num].pseudonyms.length; ++k) {
+                    if (strings[i] === key[num].pseudonyms[k]) {
+                        key[num].pseudonyms.splice(k, 1);
+                        break;
+                    }
+                }
+            }
+            isKeyEx = true;
+        }
+        if (isKeyEx)
+            break;
+    }
+    if (!isKeyEx)
+        await msg.channel.send("Can't find this sound");
+    save_pseudoJSON();
+}
+async function delete_sound(msg) {
+    updateSoundList();
+    let soundName = msg.content.trim().slice(13);
+    if (is_str_in_col(soundName, soundList)) {
+        //удаление файла
+        const path = 'sounds/' + soundName + '.mp3';
+        fs.unlink(path, err => {
+            if (err) throw err; // не удалось удалить файл
+            console.log('Файл успешно удалён');
+        });
+        //удаление из json
+        let key = pseudoJSON.dictionary;
+        for (let i = 0; i < key.length; ++i) {
+            if (soundName === key[i].soundName) {
+                key.splice(i, 1);
+                break;
+            }
+        }
+    }
+    else
+        await msg.channel.send("Can't find this sound");
+    updateSoundList();
     save_pseudoJSON();
 }
